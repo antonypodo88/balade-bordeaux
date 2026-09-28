@@ -4,212 +4,261 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Météo Bordeaux">
-<title>Météo Bordeaux Métropole</title>
+<meta name="apple-mobile-web-app-title" content="Balades Bordeaux">
+<title>Balades à Bordeaux</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-  body { font-family: system-ui; background: #0f1419; color: #e8eef3; margin: 0; padding: 16px; max-width: 900px; margin: auto; }
-  h1 { font-size: 1.4em; margin: 4px 0 2px; }
-  .sous { color: #8a9aa8; font-size: 0.85em; margin-bottom: 12px; }
-  #carte { height: 440px; border-radius: 14px; }
-  .controles { display: flex; align-items: center; gap: 10px; margin: 8px 0 16px; font-size: 0.9em; }
-  .controles button { background: #1a232c; color: #e8eef3; border: 1px solid #333; border-radius: 10px; padding: 6px 14px; font-size: 1em; }
-  .bulle { background: #1a232c; color: #fff; border: 2px solid #ffd400; border-radius: 12px; padding: 2px 7px;
-           font-weight: 700; font-size: 13px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.4); cursor: pointer; }
-  .bulle.choisie { background: #ffd400; color: #111; }
-  .detail { display: flex; align-items: center; gap: 16px; margin: 6px 0 12px; }
-  .temp { font-size: 3.4em; font-weight: 700; }
-  .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
-  .case { background: #1a232c; border-radius: 14px; padding: 12px; }
-  .case .label { color: #8a9aa8; font-size: 0.8em; }
-  .case .valeur { font-size: 1.3em; font-weight: 600; margin-top: 4px; }
-  h2 { font-size: 1.1em; margin: 20px 0 10px; }
-  .previsions { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
-  .heure { background: #1a232c; border-radius: 12px; padding: 10px; min-width: 62px; text-align: center; flex: 0 0 auto; }
-  .heure .h { color: #8a9aa8; font-size: 0.8em; }
-  .heure .e { font-size: 1.6em; margin: 4px 0; }
-  .heure .p { color: #5fb0ff; font-size: 0.8em; }
-  .credits { color: #5c6b78; font-size: 0.75em; margin-top: 24px; }
-  .credits a { color: #7a8b99; }
+  body { font-family: system-ui; background: #f5f1ea; color: #2b2320; margin: 0; }
+  header { background: #7a1f3d; color: #fff; padding: 14px 16px 10px; }
+  header h1 { margin: 0 0 10px; font-size: 1.3em; }
+  .choix { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .choix button { flex: 0 0 auto; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35);
+                  border-radius: 20px; padding: 8px 14px; font-size: 0.95em; }
+  .choix button.actif { background: #fff; color: #7a1f3d; font-weight: 700; }
+  .resume { font-size: 0.95em; margin-top: 10px; opacity: 0.95; }
+  #carte { height: 52vh; }
+  .suivi { padding: 12px 16px; background: #fff; border-bottom: 1px solid #e5ddd0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .suivi button { flex: 1; background: #7a1f3d; color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 1em; }
+  .suivi button.actif { background: #2e7d32; }
+  .suivi button.secondaire { flex: 0 0 auto; background: #e5ddd0; color: #2b2320; }
+  #prochaine { flex-basis: 100%; font-size: 1.05em; }
+  .etapes { padding: 8px 16px 30px; }
+  .etape { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e5ddd0; cursor: pointer; }
+  .num { flex: 0 0 34px; height: 34px; border-radius: 50%; background: #7a1f3d; color: #fff;
+         display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .etape.vue .num { background: #2e7d32; }
+  .etape h3 { margin: 0 0 4px; font-size: 1.05em; }
+  .etape p { margin: 0; font-size: 0.9em; color: #5a4d46; }
+  .etape .dist { font-size: 0.8em; color: #7a1f3d; margin-top: 4px; font-weight: 600; }
+  .marqueur { background: #7a1f3d; color: #fff; border: 2px solid #fff; border-radius: 50%; width: 28px; height: 28px;
+              display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+              box-shadow: 0 2px 5px rgba(0,0,0,.35); }
+  .marqueur.vue { background: #2e7d32; }
+  .credits { font-size: 0.75em; color: #8a7d74; padding: 0 16px 20px; }
 </style>
 </head>
 <body>
 
-<h1>Bordeaux Métropole en direct</h1>
-<div class="sous" id="maj">Chargement…</div>
+<header>
+  <h1>Balades à Bordeaux</h1>
+  <div class="choix" id="choix"></div>
+  <div class="resume" id="resume">Calcul du parcours…</div>
+</header>
 
 <div id="carte"></div>
-<div class="controles">
-  <button id="lecture">⏸</button>
-  <span>Radar de pluie : <b id="heureRadar">–</b></span>
+
+<div class="suivi">
+  <button id="btnSuivi">📍 Suivre ma position</button>
+  <button id="btnReset" class="secondaire">↺ Recommencer</button>
+  <div id="prochaine"></div>
 </div>
 
-<h2 id="nomCommune">–</h2>
-<div class="detail">
-  <div class="temp" id="temp">–</div>
-  <div class="sous" id="etat"></div>
-</div>
-<div class="grille">
-  <div class="case"><div class="label">Ressenti</div><div class="valeur" id="ressenti">–</div></div>
-  <div class="case"><div class="label">Vent</div><div class="valeur" id="vent">–</div></div>
-  <div class="case"><div class="label">Rafales</div><div class="valeur" id="rafales">–</div></div>
-  <div class="case"><div class="label">Pluie</div><div class="valeur" id="pluie">–</div></div>
-  <div class="case"><div class="label">Humidité</div><div class="valeur" id="humidite">–</div></div>
-</div>
-
-<h2>Prochaines heures</h2>
-<div class="previsions" id="previsions">Chargement…</div>
-
-<div class="credits">
-  Météo : <a href="https://open-meteo.com">Open-Meteo</a> (estimations par modèle) ·
-  Radar : Weather data by <a href="https://www.rainviewer.com">RainViewer</a> ·
-  Carte : © <a href="https://www.ign.fr">IGN</a>
-</div>
+<div class="etapes" id="etapes"></div>
+<div class="credits">Carte © IGN · Itinéraire piéton © OpenStreetMap / FOSSGIS · Coordonnées approximatives</div>
 
 <script>
-// ===== LES COMMUNES (nom, latitude, longitude) =====
-const COMMUNES = [
-  ["Bordeaux", 44.8378, -0.5792], ["Mérignac", 44.8386, -0.6436], ["Pessac", 44.8067, -0.6311],
-  ["Talence", 44.8025, -0.5886], ["Bègles", 44.8086, -0.5478], ["Villenave-d'Ornon", 44.7806, -0.5658],
-  ["Gradignan", 44.7725, -0.6156], ["Cenon", 44.8578, -0.5317], ["Lormont", 44.8792, -0.5217],
-  ["Floirac", 44.8361, -0.5286], ["Le Bouscat", 44.8653, -0.5997], ["Bruges", 44.8828, -0.6114],
-  ["Eysines", 44.8836, -0.6503], ["Le Haillan", 44.8725, -0.6778], ["Blanquefort", 44.9106, -0.6364],
-  ["Saint-Médard-en-Jalles", 44.8964, -0.7194], ["Bassens", 44.9022, -0.5167], ["Ambarès-et-Lagrave", 44.9253, -0.4861],
+// ===== LES BALADES : pour chaque étape [nom, latitude, longitude, description] =====
+const BALADES = [
+  { nom: "Le cœur (courte)", etapes: [
+    ["Grand-Théâtre", 44.8425, -0.5743, "Chef-d'œuvre néoclassique de Victor Louis, inauguré en 1780, et sa façade aux douze colonnes."],
+    ["Place de la Bourse & Miroir d'eau", 44.8414, -0.5698, "Place royale du XVIIIᵉ siècle. Le Miroir d'eau, créé en 2006, reflète les façades."],
+    ["Place du Parlement", 44.8404, -0.5717, "Petite place du XVIIIᵉ siècle aux belles façades, idéale pour une pause en terrasse."],
+    ["Porte Cailhau", 44.8391, -0.5694, "Porte fortifiée de 1495, élevée en l'honneur de la victoire de Fornoue."],
+    ["Grosse Cloche", 44.8356, -0.5724, "Beffroi de l'ancien hôtel de ville, l'un des plus anciens de France."],
+    ["Cathédrale Saint-André & Tour Pey-Berland", 44.8378, -0.5779, "Cathédrale gothique et son clocher séparé du XVᵉ siècle, qu'on peut gravir pour la vue."],
+  ]},
+  { nom: "Le Bordeaux historique", etapes: [
+    ["Jardin Public", 44.8485, -0.5790, "Jardin du XVIIIᵉ siècle réaménagé à l'anglaise, avec ses bassins, son kiosque et le Muséum."],
+    ["Esplanade des Quinconces", 44.8446, -0.5728, "L'une des plus grandes places d'Europe, dominée par le monument aux Girondins et ses fontaines."],
+    ["Grand-Théâtre", 44.8425, -0.5743, "Chef-d'œuvre néoclassique de Victor Louis, inauguré en 1780."],
+    ["Place de la Bourse & Miroir d'eau", 44.8414, -0.5698, "Place royale du XVIIIᵉ siècle et son célèbre Miroir d'eau."],
+    ["Place du Parlement", 44.8404, -0.5717, "Petite place du XVIIIᵉ siècle, idéale pour une pause en terrasse."],
+    ["Porte Cailhau", 44.8391, -0.5694, "Porte fortifiée de 1495, élevée en l'honneur de la victoire de Fornoue."],
+    ["Pont de pierre", 44.8378, -0.5654, "Premier pont de Bordeaux sur la Garonne, voulu par Napoléon et achevé en 1822."],
+    ["Basilique Saint-Michel", 44.8347, -0.5663, "Basilique gothique et sa flèche isolée de 114 m, l'une des plus hautes du sud de la France."],
+    ["Grosse Cloche", 44.8356, -0.5724, "Beffroi de l'ancien hôtel de ville, l'un des plus anciens de France."],
+    ["Cathédrale Saint-André & Tour Pey-Berland", 44.8378, -0.5779, "Cathédrale gothique et son clocher séparé du XVᵉ siècle."],
+    ["Palais Rohan", 44.8373, -0.5790, "Ancien palais des archevêques du XVIIIᵉ siècle, aujourd'hui l'hôtel de ville."],
+  ]},
+  { nom: "Chartrons & Cité du Vin", etapes: [
+    ["Esplanade des Quinconces", 44.8446, -0.5728, "Point de départ, face au monument aux Girondins."],
+    ["Rue Notre-Dame", 44.8515, -0.5720, "Rue des antiquaires et des brocanteurs, au cœur de l'ancien quartier des négociants en vin."],
+    ["Église Saint-Louis des Chartrons", 44.8547, -0.5741, "Église néogothique du XIXᵉ siècle, repère du quartier des Chartrons."],
+    ["Quai des Chartrons", 44.8540, -0.5675, "Promenade le long de la Garonne, bordée d'anciennes demeures de négociants."],
+    ["Bassins à flot", 44.8655, -0.5590, "Anciens bassins portuaires du XIXᵉ siècle, aujourd'hui quartier en pleine renaissance."],
+    ["Cité du Vin", 44.8625, -0.5503, "Musée consacré aux cultures du vin, ouvert en 2016, à l'architecture spectaculaire en forme de carafe."],
+  ]},
+  { nom: "La rive droite", etapes: [
+    ["Place de la Bourse", 44.8414, -0.5698, "Départ face au Miroir d'eau, avant de traverser la Garonne."],
+    ["Pont de pierre", 44.8385, -0.5625, "Traversée par le pont historique de 1822 : belle vue sur les façades des quais."],
+    ["Place Stalingrad", 44.8410, -0.5595, "Place de la Bastide et son célèbre Lion bleu, une œuvre de Xavier Veilhan."],
+    ["Jardin botanique de la Bastide", 44.8440, -0.5560, "Jardin botanique contemporain, avec ses cultures, ses milieux naturels et ses serres."],
+    ["Darwin", 44.8497, -0.5605, "Ancienne caserne militaire transformée en lieu alternatif : street art, skatepark, épicerie bio."],
+    ["Quai de la rive droite", 44.8540, -0.5580, "Promenade avec vue sur la façade des quais et le Pont Chaban-Delmas."],
+  ]},
 ];
-// ====================================================
+// =====================================================================================
 
-const heureFR = d => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-const icone = c => c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 57 ? "🌦️"
-                 : c <= 67 ? "🌧️" : c <= 77 ? "🌨️" : c <= 82 ? "🌧️" : c <= 86 ? "🌨️" : "⛈️";
-const texte = c => c === 0 ? "Ciel dégagé" : c <= 2 ? "Éclaircies" : c === 3 ? "Couvert" : c <= 48 ? "Brouillard"
-                 : c <= 57 ? "Bruine" : c <= 67 ? "Pluie" : c <= 77 ? "Neige" : c <= 82 ? "Averses" : c <= 86 ? "Averses de neige" : "Orage";
-const direction = d => ["N", "NE", "E", "SE", "S", "SO", "O", "NO"].at(Math.round(d / 45) % 8);
+const RAYON_VISITE = 40;   // mètres
+const VITESSE = 4.5;       // km/h
 
-let meteo = [], choix = 0;
-try { choix = Number(localStorage.getItem("communeBdx")) || 0; } catch (e) {}
-if (choix >= COMMUNES.length) choix = 0;
+const km = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km";
+const duree = m => { const min = Math.round(m / 1000 / VITESSE * 60); return min < 60 ? min + " min" : Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0"); };
 
-// ===================== CARTE (IGN) =====================
-const carte = L.map("carte", { zoomControl: false }).setView([44.855, -0.60], 11);
-L.tileLayer("https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
-  + "&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png"
-  + "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", { maxZoom: 18, attribution: "© IGN" }).addTo(carte);
-const calqueBulles = L.layerGroup().addTo(carte);
-
-// ===================== MÉTÉO DE TOUTES LES COMMUNES (1 seule requête) =====================
-async function chargerMeteo() {
-  try {
-    const url = "https://api.open-meteo.com/v1/forecast"
-      + "?latitude=" + COMMUNES.map(c => c[1]).join(",")
-      + "&longitude=" + COMMUNES.map(c => c[2]).join(",")
-      + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
-      + "&hourly=temperature_2m,precipitation_probability,weather_code"
-      + "&timezone=Europe%2FParis&forecast_days=2";
-    const data = await (await fetch(url)).json();
-    meteo = Array.isArray(data) ? data : [data];
-    if (!meteo[0]?.current) {
-      document.getElementById("maj").textContent = "Format inattendu : " + JSON.stringify(data).slice(0, 300);
-      return;
-    }
-    document.getElementById("maj").textContent = "Mis à jour à " + heureFR(new Date()) + " · touchez une commune";
-    dessinerBulles();
-    afficherCommune();
-  } catch (e) {
-    document.getElementById("maj").textContent = "Erreur météo : " + e.message;
-  }
+function distance(a, b) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function dessinerBulles() {
-  calqueBulles.clearLayers();
-  COMMUNES.forEach(([nom, lat, lon], i) => {
-    const c = meteo[i]?.current;
-    if (!c) return;
-    L.marker([lat, lon], { icon: L.divIcon({ className: "",
-        html: `<span class="bulle ${i === choix ? "choisie" : ""}">${icone(c.weather_code)} ${Math.round(c.temperature_2m)}°</span>` }) })
-      .on("click", () => choisir(i))
-      .addTo(calqueBulles);
-  });
+// ===================== ÉTAT =====================
+let choix = 0;
+try { choix = Number(localStorage.getItem("baladeChoix")) || 0; } catch (e) {}
+if (choix >= BALADES.length) choix = 0;
+let vues = new Set(), distancesEtapes = [], marqueurs = [];
+const etapes = () => BALADES[choix].etapes;
+
+function chargerVues() {
+  try { vues = new Set(JSON.parse(localStorage.getItem("baladeVues_" + choix) || "[]")); } catch (e) { vues = new Set(); }
+}
+function sauverVues() {
+  try { localStorage.setItem("baladeVues_" + choix, JSON.stringify([...vues])); } catch (e) {}
+}
+
+// ===================== CARTE =====================
+const carte = L.map("carte").setView([44.845, -0.570], 14);
+L.tileLayer("https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+  + "&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png"
+  + "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", { maxZoom: 19, attribution: "© IGN" }).addTo(carte);
+const calqueParcours = L.layerGroup().addTo(carte);
+const calqueEtapes = L.layerGroup().addTo(carte);
+
+const icone = (i, vue) => L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+  html: `<div class="marqueur ${vue ? "vue" : ""}">${i + 1}</div>` });
+
+// ===================== CHOIX DE LA BALADE =====================
+function afficherChoix() {
+  document.getElementById("choix").innerHTML = BALADES.map((b, i) =>
+    `<button class="${i === choix ? "actif" : ""}" onclick="choisir(${i})">${b.nom}</button>`).join("");
 }
 
 function choisir(i) {
   choix = i;
-  try { localStorage.setItem("communeBdx", i); } catch (e) {}
-  dessinerBulles();
-  afficherCommune();
+  try { localStorage.setItem("baladeChoix", i); } catch (e) {}
+  afficherBalade();
 }
 
-function afficherCommune() {
-  const m = meteo[choix];
-  if (!m) return;
-  const c = m.current;
-  document.getElementById("nomCommune").textContent = COMMUNES[choix][0];
-  document.getElementById("temp").textContent = c.temperature_2m.toFixed(1) + "°";
-  document.getElementById("etat").textContent = icone(c.weather_code) + " " + texte(c.weather_code);
-  document.getElementById("ressenti").textContent = Math.round(c.apparent_temperature) + "°";
-  document.getElementById("vent").textContent = Math.round(c.wind_speed_10m) + " km/h " + direction(c.wind_direction_10m);
-  document.getElementById("rafales").textContent = Math.round(c.wind_gusts_10m) + " km/h";
-  document.getElementById("pluie").textContent = c.precipitation.toFixed(1) + " mm";
-  document.getElementById("humidite").textContent = Math.round(c.relative_humidity_2m) + " %";
-
-  const depuis = Date.now() - 3600000;
-  const heures = m.hourly.time
-    .map((t, i) => ({ t: new Date(t), temp: m.hourly.temperature_2m[i],
-                      pluie: m.hourly.precipitation_probability[i], code: m.hourly.weather_code[i] }))
-    .filter(h => h.t.getTime() >= depuis)
-    .slice(0, 24);
-  document.getElementById("previsions").innerHTML = heures.map(h => `
-    <div class="heure">
-      <div class="h">${h.t.getHours()} h</div>
-      <div class="e">${icone(h.code)}</div>
-      <div>${Math.round(h.temp)}°</div>
-      <div class="p">${h.pluie ?? 0} %</div>
-    </div>`).join("");
+function afficherBalade() {
+  afficherChoix();
+  chargerVues();
+  calqueEtapes.clearLayers();
+  calqueParcours.clearLayers();
+  marqueurs = etapes().map(([nom, lat, lon, desc], i) =>
+    L.marker([lat, lon], { icon: icone(i, vues.has(i)) })
+      .bindPopup(`<b>${i + 1}. ${nom}</b><br>${desc}`)
+      .addTo(calqueEtapes));
+  carte.fitBounds(etapes().map(e => [e[1], e[2]]), { padding: [30, 30] });
+  document.getElementById("resume").textContent = "Calcul du parcours…";
+  document.getElementById("prochaine").textContent = "";
+  tracerParcours(choix);
 }
 
-// ===================== RADAR ANIMÉ =====================
-let images = [], calques = [], position = 0, enLecture = true, minuteur = null;
-
-async function chargerRadar() {
+// ===================== ITINÉRAIRE À PIED =====================
+async function tracerParcours(numero) {
+  const pts = etapes().map(e => [e[1], e[2]]);
   try {
-    const data = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
-    calques.forEach(c => carte.removeLayer(c));
-    images = [...(data.radar?.past || []), ...(data.radar?.nowcast || [])];
-    calques = images.map(img => L.tileLayer(
-      data.host + img.path + "/256/{z}/{x}/{y}/2/1_1.png",
-      { opacity: 0, maxNativeZoom: 7, maxZoom: 18, zIndex: 10 }
-    ).addTo(carte));
-    position = images.length - 1;
-    afficherImage();
-    if (enLecture) demarrer();
+    const url = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/"
+              + etapes().map(e => e[2] + "," + e[1]).join(";") + "?overview=full&geometries=geojson";
+    const data = await (await fetch(url)).json();
+    if (numero !== choix) return;                     // l'utilisateur a changé de balade entre-temps
+    const route = data.routes[0];
+    L.geoJSON(route.geometry, { style: { color: "#7a1f3d", weight: 5, opacity: 0.75 } }).addTo(calqueParcours);
+    distancesEtapes = [0, ...route.legs.map(l => l.distance)];
+    document.getElementById("resume").textContent =
+      `${pts.length} étapes · ${km(route.distance)} à pied · environ ${duree(route.distance)} de marche`;
   } catch (e) {
-    document.getElementById("heureRadar").textContent = "erreur : " + e.message;
+    if (numero !== choix) return;
+    L.polyline(pts, { color: "#7a1f3d", weight: 4, dashArray: "6 8" }).addTo(calqueParcours);
+    distancesEtapes = [0, ...pts.slice(1).map((p, i) => distance(pts[i], p) * 1.3)];
+    const total = distancesEtapes.reduce((a, b) => a + b, 0);
+    document.getElementById("resume").textContent =
+      `${pts.length} étapes · environ ${km(total)} · ${duree(total)} de marche (estimation)`;
   }
+  afficherListe();
 }
 
-function afficherImage() {
-  calques.forEach((c, i) => c.setOpacity(i === position ? 0.7 : 0));
-  const img = images[position];
-  if (img) document.getElementById("heureRadar").textContent =
-    heureFR(new Date(img.time * 1000)) + (img.time * 1000 > Date.now() ? " (prévision)" : "");
+function afficherListe() {
+  let cumul = 0;
+  document.getElementById("etapes").innerHTML = etapes().map(([nom, , , desc], i) => {
+    cumul += distancesEtapes[i] || 0;
+    const info = i === 0 ? "Départ" : `+ ${km(distancesEtapes[i] || 0)} · total ${km(cumul)}`;
+    return `<div class="etape ${vues.has(i) ? "vue" : ""}" onclick="allerA(${i})">
+      <div class="num">${vues.has(i) ? "✓" : i + 1}</div>
+      <div><h3>${nom}</h3><p>${desc}</p><div class="dist">${info}</div></div>
+    </div>`;
+  }).join("");
 }
 
-function demarrer() {
-  clearInterval(minuteur);
-  minuteur = setInterval(() => { position = (position + 1) % images.length; afficherImage(); }, 600);
+function allerA(i) {
+  carte.setView([etapes()[i][1], etapes()[i][2]], 17);
+  marqueurs[i].openPopup();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-document.getElementById("lecture").onclick = () => {
-  enLecture = !enLecture;
-  document.getElementById("lecture").textContent = enLecture ? "⏸" : "▶";
-  enLecture ? demarrer() : clearInterval(minuteur);
+function marquerVue(i) {
+  vues.add(i);
+  sauverVues();
+  marqueurs[i].setIcon(icone(i, true));
+  afficherListe();
+}
+
+document.getElementById("btnReset").onclick = () => {
+  if (!confirm("Remettre à zéro les étapes de cette balade ?")) return;
+  vues = new Set();
+  sauverVues();
+  afficherBalade();
 };
 
-// ===================== DÉMARRAGE =====================
-chargerMeteo();
-chargerRadar();
-setInterval(chargerMeteo, 15 * 60000);   // Open-Meteo actualise ses données toutes les 15 min
-setInterval(chargerRadar, 5 * 60000);
+// ===================== SUIVI GPS =====================
+let suiviId = null, pointMoi = null;
+
+document.getElementById("btnSuivi").onclick = () => {
+  const btn = document.getElementById("btnSuivi");
+  if (suiviId !== null) {
+    navigator.geolocation.clearWatch(suiviId);
+    suiviId = null;
+    btn.classList.remove("actif");
+    btn.textContent = "📍 Suivre ma position";
+    return;
+  }
+  if (!navigator.geolocation) { alert("La localisation n'est pas disponible sur cet appareil."); return; }
+  btn.classList.add("actif");
+  btn.textContent = "⏹ Arrêter le suivi";
+  suiviId = navigator.geolocation.watchPosition(majPosition,
+    err => { document.getElementById("prochaine").textContent = "Localisation impossible : " + err.message; },
+    { enableHighAccuracy: true, maximumAge: 5000 });
+};
+
+function majPosition(pos) {
+  const moi = [pos.coords.latitude, pos.coords.longitude];
+  if (!pointMoi) {
+    pointMoi = L.circleMarker(moi, { radius: 9, color: "#fff", weight: 3, fillColor: "#1e6fff", fillOpacity: 1 }).addTo(carte);
+    carte.setView(moi, 16);
+  } else {
+    pointMoi.setLatLng(moi);
+  }
+  etapes().forEach((e, i) => { if (!vues.has(i) && distance(moi, [e[1], e[2]]) < RAYON_VISITE) marquerVue(i); });
+
+  const i = etapes().findIndex((e, k) => !vues.has(k));
+  const zone = document.getElementById("prochaine");
+  if (i === -1) { zone.innerHTML = "🎉 Balade terminée, bravo !"; return; }
+  const d = distance(moi, [etapes()[i][1], etapes()[i][2]]);
+  zone.innerHTML = `Prochaine étape : <b>${i + 1}. ${etapes()[i][0]}</b><br>à ${km(d)} à vol d'oiseau (≈ ${duree(d * 1.3)})`;
+}
+
+afficherBalade();
 </script>
 </body>
 </html>
