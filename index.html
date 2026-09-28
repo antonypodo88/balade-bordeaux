@@ -309,7 +309,7 @@ async function tracerParcours(numero) {
 async function itineraire(pts) {
   const url = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/"
             + pts.map(p => p[1] + "," + p[0]).join(";") + "?overview=full&geometries=geojson";
-  const data = await (await fetch(url)).json();
+  const data = await fetchJson(url, 20);
   if (!data.routes?.length) throw new Error("pas d'itinéraire");
   return data.routes[0];
 }
@@ -325,31 +325,42 @@ const SERVEURS_OSM = ["https://overpass-api.de/api/interpreter", "https://overpa
                       "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
 const memoLieux = {};   // les lieux déjà cherchés autour d'un départ (évite de redemander à chaque « Autre balade »)
 
+// fetch avec délai maximum : on n'attend jamais indéfiniment un serveur
+async function fetchJson(url, secondes) {
+  const stop = new AbortController();
+  const minuteur = setTimeout(() => stop.abort(), secondes * 1000);
+  try {
+    const rep = await fetch(url, { signal: stop.signal });
+    if (!rep.ok) throw new Error("erreur " + rep.status);
+    return await rep.json();
+  } finally { clearTimeout(minuteur); }
+}
+
 async function chercherLieux(centre, rayon) {
   const cle = centre.map(x => x.toFixed(4)).join(",") + "," + rayon;
   if (memoLieux[cle]) return memoLieux[cle];
   const autour = `(around:${rayon},${centre[0]},${centre[1]})`;
-  const filtres = TYPES.map(([k, v]) => `nwr["${k}"${v ? `="${v}"` : ""}]["name"]${autour};`).join("");
-  const q = `[out:json][timeout:25];(${filtres});out center tags;`;
-  for (const serveur of SERVEURS_OSM) {
-    try {
-      const rep = await fetch(serveur + "?data=" + encodeURIComponent(q));
-      if (!rep.ok) continue;
-      const data = await rep.json();
-      const vus = new Set(), lieux = [];
-      for (const el of data.elements || []) {
-        const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon, nom = el.tags?.name;
-        if (lat == null || !nom || vus.has(nom)) continue;
-        const t = TYPES.find(([k, v]) => el.tags[k] && (!v || el.tags[k] === v));
-        if (!t || ["boundary_stone", "milestone", "benchmark"].includes(el.tags.historic)) continue;
-        vus.add(nom);
-        lieux.push({ nom, lat, lon, type: t[2], interet: t[3], d: distance(centre, [lat, lon]) });
-      }
-      memoLieux[cle] = lieux;
-      return lieux;
-    } catch (e) { /* on essaie le serveur suivant */ }
+  // Requête allégée : 4 recherches au lieu de 9
+  const q = `[out:json][timeout:20];(`
+    + `nwr["name"]["tourism"~"^(museum|viewpoint|attraction|artwork)$"]${autour};`
+    + `nwr["name"]["historic"]${autour};`
+    + `nwr["name"]["amenity"~"^(fountain|place_of_worship)$"]${autour};`
+    + `nwr["name"]["leisure"~"^(park|garden)$"]${autour};`
+    + `);out center 400;`;
+  // On interroge les serveurs en même temps : le plus rapide gagne
+  const data = await Promise.any(SERVEURS_OSM.map(s => fetchJson(s + "?data=" + encodeURIComponent(q), 20)))
+    .catch(() => { throw new Error("serveurs de lieux indisponibles"); });
+  const vus = new Set(), lieux = [];
+  for (const el of data.elements || []) {
+    const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon, nom = el.tags?.name;
+    if (lat == null || !nom || vus.has(nom)) continue;
+    const t = TYPES.find(([k, v]) => el.tags[k] && (!v || el.tags[k] === v));
+    if (!t || ["boundary_stone", "milestone", "benchmark"].includes(el.tags.historic)) continue;
+    vus.add(nom);
+    lieux.push({ nom, lat, lon, type: t[2], interet: t[3], d: distance(centre, [lat, lon]) });
   }
-  throw new Error("serveurs de lieux indisponibles");
+  memoLieux[cle] = lieux;
+  return lieux;
 }
 
 const capVers = (a, b) => (Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI + 360) % 360;
@@ -376,6 +387,7 @@ async function tracerSurprise(numero) {
 
   let lieux = [];
   try { lieux = await chercherLieux(d0, rayon); } catch (e) { resume.textContent = "Lieux indisponibles, balade au hasard…"; }
+  if (numero === choix && lieux.length) resume.textContent = `${lieux.length} lieux trouvés, calcul de la boucle…`;
   if (numero !== choix) return;
 
   // 1) On choisit 2 ou 3 « aimants » : des lieux intéressants dans des directions différentes
