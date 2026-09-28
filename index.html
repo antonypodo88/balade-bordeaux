@@ -110,3 +110,382 @@ const BALADES = [
   { nom: "Le Bordeaux historique", etapes: [
     ["Jardin Public", 44.8485, -0.5790, "Jardin du XVIIIᵉ siècle réaménagé à l'anglaise, avec ses bassins, son kiosque et le Muséum."],
     ["Esplanade des Quinconces", 44.8446, -0.5728, "L'une des plus grandes places d'Europe, dominée par le monument aux Girondins et ses fontaines."],
+    ["Grand-Théâtre", 44.8425, -0.5743, "Chef-d'œuvre néoclassique de Victor Louis, inauguré en 1780."],
+    ["Place de la Bourse & Miroir d'eau", 44.8414, -0.5698, "Place royale du XVIIIᵉ siècle et son célèbre Miroir d'eau."],
+    ["Place du Parlement", 44.8404, -0.5717, "Petite place du XVIIIᵉ siècle, idéale pour une pause en terrasse."],
+    ["Porte Cailhau", 44.8391, -0.5694, "Porte fortifiée de 1495, élevée en l'honneur de la victoire de Fornoue."],
+    ["Pont de pierre", 44.8378, -0.5654, "Premier pont de Bordeaux sur la Garonne, voulu par Napoléon et achevé en 1822."],
+    ["Basilique Saint-Michel", 44.8347, -0.5663, "Basilique gothique et sa flèche isolée de 114 m, l'une des plus hautes du sud de la France."],
+    ["Grosse Cloche", 44.8356, -0.5724, "Beffroi de l'ancien hôtel de ville, l'un des plus anciens de France."],
+    ["Cathédrale Saint-André & Tour Pey-Berland", 44.8378, -0.5779, "Cathédrale gothique et son clocher séparé du XVᵉ siècle."],
+    ["Palais Rohan", 44.8373, -0.5790, "Ancien palais des archevêques du XVIIIᵉ siècle, aujourd'hui l'hôtel de ville."],
+  ]},
+  { nom: "Chartrons & Cité du Vin", etapes: [
+    ["Esplanade des Quinconces", 44.8446, -0.5728, "Point de départ, face au monument aux Girondins."],
+    ["Rue Notre-Dame", 44.8515, -0.5720, "Rue des antiquaires et des brocanteurs, au cœur de l'ancien quartier des négociants en vin."],
+    ["Église Saint-Louis des Chartrons", 44.8547, -0.5741, "Église néogothique du XIXᵉ siècle, repère du quartier des Chartrons."],
+    ["Quai des Chartrons", 44.8540, -0.5675, "Promenade le long de la Garonne, bordée d'anciennes demeures de négociants."],
+    ["Bassins à flot", 44.8655, -0.5590, "Anciens bassins portuaires du XIXᵉ siècle, aujourd'hui quartier en pleine renaissance."],
+    ["Cité du Vin", 44.8625, -0.5503, "Musée consacré aux cultures du vin, ouvert en 2016, à l'architecture en forme de carafe."],
+  ]},
+  { nom: "La rive droite", etapes: [
+    ["Place de la Bourse", 44.8414, -0.5698, "Départ face au Miroir d'eau, avant de traverser la Garonne."],
+    ["Pont de pierre", 44.8385, -0.5625, "Traversée par le pont historique de 1822 : belle vue sur les façades des quais."],
+    ["Place Stalingrad", 44.8410, -0.5595, "Place de la Bastide et son célèbre Lion bleu, une œuvre de Xavier Veilhan."],
+    ["Jardin botanique de la Bastide", 44.8440, -0.5560, "Jardin botanique contemporain, avec ses cultures, ses milieux naturels et ses serres."],
+    ["Darwin", 44.8497, -0.5605, "Ancienne caserne militaire transformée en lieu alternatif : street art, skatepark, épicerie bio."],
+    ["Quai de la rive droite", 44.8540, -0.5580, "Promenade avec vue sur la façade des quais et le Pont Chaban-Delmas."],
+  ]},
+];
+// =====================================================================================
+
+const RAYON_VISITE = 40;     // mètres : étape cochée quand on passe à moins de 40 m
+const VITESSE = 4.5;         // km/h
+const PROCHE_PARCOURS = 70;  // mètres : un lieu compte s'il est à moins de 70 m du tracé
+
+const km = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km";
+const duree = m => { const min = Math.round(m / 1000 / VITESSE * 60); return min < 60 ? min + " min" : Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0"); };
+
+function distance(a, b) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+// Point situé à "metres" de "p" dans la direction "cap" (en degrés, 0 = nord)
+function deplacer(p, metres, cap) {
+  const c = cap * Math.PI / 180;
+  return [p[0] + metres * Math.cos(c) / 111320, p[1] + metres * Math.sin(c) / (111320 * Math.cos(p[0] * Math.PI / 180))];
+}
+
+// ===================== ÉTAT (gardé uniquement sur le téléphone) =====================
+const lire = (cle, defaut) => { try { return JSON.parse(localStorage.getItem(cle)) ?? defaut; } catch (e) { return defaut; } };
+const ecrire = (cle, val) => { try { localStorage.setItem(cle, JSON.stringify(val)); } catch (e) {} };
+
+let choix = lire("baladeChoix", 0);
+if (choix >= BALADES.length) choix = 0;
+let depart = lire("baladeDepart", null);
+let boucle = lire("baladeBoucle", false);
+let surpriseKm = lire("surpriseKm", 3);
+document.getElementById("boucle").checked = boucle;
+
+let vues = new Set(), ordre = [], distancesEtapes = [], positionsSurprise = [], marqueurs = {};
+const balade = () => BALADES[choix];
+const etapes = () => balade().etapes;
+
+function calculerOrdre() {
+  const n = etapes().length;
+  if (!depart || balade().surprise) return [...Array(n).keys()];
+  let plusProche = 0, dMin = Infinity;
+  etapes().forEach((e, i) => { const d = distance([depart.lat, depart.lon], [e[1], e[2]]); if (d < dMin) { dMin = d; plusProche = i; } });
+  return [...Array(n).keys()].map(k => (plusProche + k) % n);
+}
+
+// ===================== CARTE =====================
+const carte = L.map("carte").setView([44.845, -0.570], 14);
+L.tileLayer("https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+  + "&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png"
+  + "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", { maxZoom: 19, attribution: "© IGN" }).addTo(carte);
+const calqueParcours = L.layerGroup().addTo(carte);
+const calqueEtapes = L.layerGroup().addTo(carte);
+
+const icone = (texte, classe) => L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+  html: `<div class="marqueur ${classe}">${texte}</div>` });
+
+// ===================== CHOIX DE LA BALADE =====================
+function afficherChoix() {
+  document.getElementById("choix").innerHTML = BALADES.map((b, i) => {
+    let loin = "";
+    if (depart && !b.surprise) {
+      const d = Math.min(...b.etapes.map(e => distance([depart.lat, depart.lon], [e[1], e[2]])));
+      loin = ` <small>· à ${km(d * 1.3)}</small>`;
+    }
+    return `<button class="${i === choix ? "actif" : ""}" onclick="choisir(${i})">${b.nom}${loin}</button>`;
+  }).join("");
+  document.getElementById("options").style.display = balade().surprise ? "flex" : "none";
+  document.querySelectorAll("#options button[data-km]").forEach(b =>
+    b.classList.toggle("actif", Number(b.dataset.km) === surpriseKm));
+}
+
+function choisir(i) { choix = i; ecrire("baladeChoix", i); afficherBalade(); }
+function choisirKm(k) { surpriseKm = k; ecrire("surpriseKm", k); afficherBalade(); }
+
+// ===================== POINT DE DÉPART =====================
+function definirDepart(nom, lat, lon) {
+  depart = nom ? { nom, lat, lon } : null;
+  ecrire("baladeDepart", depart);
+  document.getElementById("recherche").value = "";
+  document.getElementById("suggestions").innerHTML = "";
+  afficherBalade();
+}
+
+function departPosition() {
+  if (!navigator.geolocation) { alert("La localisation n'est pas disponible sur cet appareil."); return; }
+  document.getElementById("departInfo").textContent = "Recherche de votre position…";
+  navigator.geolocation.getCurrentPosition(
+    p => definirDepart("Ma position", p.coords.latitude, p.coords.longitude),
+    err => { document.getElementById("departInfo").textContent = "Position introuvable : " + err.message; },
+    { enableHighAccuracy: true, timeout: 15000 });
+}
+
+document.getElementById("boucle").onchange = e => { boucle = e.target.checked; ecrire("baladeBoucle", boucle); afficherBalade(); };
+
+let attente = null, resultats = [];
+document.getElementById("recherche").oninput = e => {
+  clearTimeout(attente);
+  const q = e.target.value.trim();
+  if (q.length < 3) { document.getElementById("suggestions").innerHTML = ""; return; }
+  attente = setTimeout(() => chercherAdresse(q), 350);
+};
+
+async function chercherAdresse(q) {
+  const zone = document.getElementById("suggestions");
+  try {
+    const url = "https://data.geopf.fr/geocodage/search?limit=5&lat=44.84&lon=-0.58&q=" + encodeURIComponent(q);
+    const data = await (await fetch(url)).json();
+    resultats = data.features || [];
+    zone.innerHTML = resultats.length
+      ? resultats.map((f, i) => `<div onclick="choisirAdresse(${i})">${f.properties.label}</div>`).join("")
+      : "<div>Aucun résultat</div>";
+  } catch (err) {
+    zone.innerHTML = "<div>Recherche indisponible : " + err.message + "</div>";
+  }
+}
+
+function choisirAdresse(i) {
+  const [lon, lat] = resultats[i].geometry.coordinates;
+  definirDepart(resultats[i].properties.label, lat, lon);
+}
+
+// ===================== AFFICHAGE =====================
+function afficherBalade() {
+  afficherChoix();
+  calqueEtapes.clearLayers();
+  calqueParcours.clearLayers();
+  marqueurs = {};
+  document.getElementById("prochaine").textContent = "";
+  document.getElementById("departInfo").textContent = depart ? "Départ : " + depart.nom : "Départ : 1ʳᵉ étape de la balade";
+  if (depart) L.marker([depart.lat, depart.lon], { icon: icone("D", "depart") }).bindPopup("Départ").addTo(calqueEtapes);
+
+  if (balade().surprise) { balade().etapes = []; tracerSurprise(choix); return; }
+
+  vues = new Set(lire("baladeVues_" + choix, []));
+  ordre = calculerOrdre();
+  ordre.forEach((idx, pos) => {
+    const [nom, lat, lon, desc] = etapes()[idx];
+    marqueurs[idx] = L.marker([lat, lon], { icon: icone(pos + 1, vues.has(idx) ? "vue" : "") })
+      .bindPopup(`<b>${pos + 1}. ${nom}</b><br>${desc}`).addTo(calqueEtapes);
+  });
+  const points = ordre.map(i => [etapes()[i][1], etapes()[i][2]]);
+  if (depart) points.unshift([depart.lat, depart.lon]);
+  carte.fitBounds(points, { padding: [30, 30] });
+  document.getElementById("resume").textContent = "Calcul du parcours…";
+  tracerParcours(choix);
+}
+
+// ===================== BALADES CLASSIQUES =====================
+async function tracerParcours(numero) {
+  const pts = ordre.map(i => [etapes()[i][1], etapes()[i][2]]);
+  if (depart) pts.unshift([depart.lat, depart.lon]);
+  if (depart && boucle) pts.push([depart.lat, depart.lon]);
+  try {
+    const route = await itineraire(pts);
+    if (numero !== choix) return;
+    L.geoJSON(route.geometry, { style: { color: "#7a1f3d", weight: 5, opacity: 0.75 } }).addTo(calqueParcours);
+    distancesEtapes = route.legs.map(l => l.distance);
+    document.getElementById("resume").textContent =
+      `${ordre.length} étapes · ${km(route.distance)} à pied · environ ${duree(route.distance)} de marche`;
+  } catch (e) {
+    if (numero !== choix) return;
+    L.polyline(pts, { color: "#7a1f3d", weight: 4, dashArray: "6 8" }).addTo(calqueParcours);
+    distancesEtapes = pts.slice(1).map((p, i) => distance(pts[i], p) * 1.3);
+    const total = distancesEtapes.reduce((a, b) => a + b, 0);
+    document.getElementById("resume").textContent =
+      `${ordre.length} étapes · environ ${km(total)} · ${duree(total)} de marche (estimation)`;
+  }
+  afficherListe();
+}
+
+async function itineraire(pts) {
+  const url = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/"
+            + pts.map(p => p[1] + "," + p[0]).join(";") + "?overview=full&geometries=geojson";
+  const data = await (await fetch(url)).json();
+  if (!data.routes?.length) throw new Error("pas d'itinéraire");
+  return data.routes[0];
+}
+
+// ===================== BALADE SURPRISE =====================
+const TYPES = [
+  ["historic", null, "Patrimoine"], ["tourism", "artwork", "Œuvre d'art"], ["tourism", "viewpoint", "Point de vue"],
+  ["tourism", "museum", "Musée"], ["tourism", "attraction", "Curiosité"], ["leisure", "park", "Parc"],
+  ["leisure", "garden", "Jardin"], ["amenity", "fountain", "Fontaine"], ["amenity", "place_of_worship", "Lieu de culte"],
+];
+
+async function tracerSurprise(numero) {
+  const resume = document.getElementById("resume");
+  const liste = document.getElementById("etapes");
+  if (!depart) {
+    resume.textContent = "Choisissez d'abord un point de départ (adresse, ma position…).";
+    liste.innerHTML = "";
+    return;
+  }
+  resume.textContent = "Création d'une balade surprise…";
+  liste.innerHTML = "";
+
+  // Boucle en triangle dans une direction tirée au hasard
+  const d0 = [depart.lat, depart.lon];
+  const cap = Math.random() * 360;
+  const cote = surpriseKm * 1000 / (3 * 1.3);
+  const pts = [d0, deplacer(d0, cote, cap - 30), deplacer(d0, cote, cap + 30), d0];
+
+  let route;
+  try { route = await itineraire(pts); } catch (e) { resume.textContent = "Itinéraire impossible : " + e.message; return; }
+  if (numero !== choix) return;
+  L.geoJSON(route.geometry, { style: { color: "#7a1f3d", weight: 5, opacity: 0.75 } }).addTo(calqueParcours);
+  carte.fitBounds(route.geometry.coordinates.map(c => [c[1], c[0]]), { padding: [30, 30] });
+  resume.textContent = `Boucle de ${km(route.distance)} · environ ${duree(route.distance)} de marche · recherche des lieux…`;
+
+  // Distance cumulée le long du tracé
+  const trace = route.geometry.coordinates.map(c => [c[1], c[0]]);
+  const cumul = [0];
+  for (let i = 1; i < trace.length; i++) cumul.push(cumul[i - 1] + distance(trace[i - 1], trace[i]));
+
+  // Lieux sympas autour du tracé (OpenStreetMap / Overpass)
+  const lats = trace.map(p => p[0]), lons = trace.map(p => p[1]);
+  const bbox = [Math.min(...lats) - 0.001, Math.min(...lons) - 0.001, Math.max(...lats) + 0.001, Math.max(...lons) + 0.001].join(",");
+  const filtres = TYPES.map(([cle, val]) => `nwr["${cle}"${val ? `="${val}"` : ""}]["name"](${bbox});`).join("");
+  let lieux = [];
+  try {
+    const q = `[out:json][timeout:25];(${filtres});out center 300;`;
+    const data = await (await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q))).json();
+    lieux = data.elements || [];
+  } catch (e) {
+    resume.textContent += " (lieux indisponibles)";
+  }
+  if (numero !== choix) return;
+
+  // On garde les lieux proches du tracé, dans l'ordre du parcours
+  const vus = new Set(), trouves = [];
+  for (const el of lieux) {
+    const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon, nom = el.tags?.name;
+    if (lat == null || !nom || vus.has(nom)) continue;
+    let best = Infinity, iBest = 0;
+    for (let i = 0; i < trace.length; i += 3) { const d = distance([lat, lon], trace[i]); if (d < best) { best = d; iBest = i; } }
+    if (best > PROCHE_PARCOURS) continue;
+    const type = TYPES.find(([cle, val]) => el.tags[cle] && (!val || el.tags[cle] === val));
+    vus.add(nom);
+    trouves.push({ nom, lat, lon, type: type ? type[2] : "Lieu", pos: cumul[iBest] });
+  }
+  trouves.sort((a, b) => a.pos - b.pos);
+  const choisis = trouves.slice(0, 20);
+
+  balade().etapes = choisis.map(t => [t.nom, t.lat, t.lon, t.type]);
+  positionsSurprise = choisis.map(t => t.pos);
+  ordre = choisis.map((t, i) => i);
+  vues = new Set();
+  ecrire("baladeVues_" + choix, []);
+
+  choisis.forEach((t, i) => {
+    marqueurs[i] = L.marker([t.lat, t.lon], { icon: icone("★", "etoile") })
+      .bindPopup(`<b>${t.nom}</b><br>${t.type}`).addTo(calqueEtapes);
+  });
+  resume.textContent = `Boucle de ${km(route.distance)} · environ ${duree(route.distance)} · ${choisis.length} lieux à découvrir`;
+  afficherListe();
+}
+
+// ===================== LISTE DES ÉTAPES =====================
+function afficherListe() {
+  const zone = document.getElementById("etapes");
+  if (balade().surprise) {
+    zone.innerHTML = etapes().length
+      ? etapes().map(([nom, , , type], i) => `<div class="etape ${vues.has(i) ? "vue" : ""}" onclick="allerA(${i})">
+          <div class="num">${vues.has(i) ? "✓" : "★"}</div>
+          <div><h3>${nom}</h3><p>${type}</p><div class="dist">à ${km(positionsSurprise[i])} du départ</div></div>
+        </div>`).join("")
+      : "<p>Aucun lieu remarquable trouvé sur ce parcours. Essayez « 🔀 Autre balade » !</p>";
+    return;
+  }
+  let cumul = 0, lignes = [];
+  const decal = depart ? 1 : 0;
+  if (depart) lignes.push(`<div class="etape depart-ligne"><div class="num">D</div><div><h3>Départ : ${depart.nom}</h3></div></div>`);
+  ordre.forEach((idx, pos) => {
+    const [nom, , , desc] = etapes()[idx];
+    const troncon = pos === 0 && !depart ? 0 : (distancesEtapes[pos - 1 + decal] || 0);
+    cumul += troncon;
+    const info = troncon === 0 ? "Départ" : `+ ${km(troncon)} · total ${km(cumul)}`;
+    lignes.push(`<div class="etape ${vues.has(idx) ? "vue" : ""}" onclick="allerA(${idx})">
+      <div class="num">${vues.has(idx) ? "✓" : pos + 1}</div>
+      <div><h3>${nom}</h3><p>${desc}</p><div class="dist">${info}</div></div>
+    </div>`);
+  });
+  if (depart && boucle) {
+    const retour = distancesEtapes[ordre.length] || 0;
+    cumul += retour;
+    lignes.push(`<div class="etape depart-ligne"><div class="num">D</div><div><h3>Retour au départ</h3>
+      <div class="dist">+ ${km(retour)} · total ${km(cumul)}</div></div></div>`);
+  }
+  zone.innerHTML = lignes.join("");
+}
+
+function allerA(idx) {
+  carte.setView([etapes()[idx][1], etapes()[idx][2]], 17);
+  marqueurs[idx]?.openPopup();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function marquerVue(idx) {
+  vues.add(idx);
+  ecrire("baladeVues_" + choix, [...vues]);
+  marqueurs[idx]?.setIcon(icone(balade().surprise ? "✓" : ordre.indexOf(idx) + 1, "vue"));
+  afficherListe();
+}
+
+document.getElementById("btnReset").onclick = () => {
+  if (!confirm("Remettre à zéro les étapes de cette balade ?")) return;
+  ecrire("baladeVues_" + choix, []);
+  vues = new Set();
+  balade().surprise ? afficherListe() : afficherBalade();
+};
+
+// ===================== SUIVI GPS =====================
+let suiviId = null, pointMoi = null;
+
+document.getElementById("btnSuivi").onclick = () => {
+  const btn = document.getElementById("btnSuivi");
+  if (suiviId !== null) {
+    navigator.geolocation.clearWatch(suiviId);
+    suiviId = null;
+    btn.classList.remove("actif");
+    btn.textContent = "📍 Suivre ma position";
+    return;
+  }
+  if (!navigator.geolocation) { alert("La localisation n'est pas disponible sur cet appareil."); return; }
+  btn.classList.add("actif");
+  btn.textContent = "⏹ Arrêter le suivi";
+  suiviId = navigator.geolocation.watchPosition(majPosition,
+    err => { document.getElementById("prochaine").textContent = "Localisation impossible : " + err.message; },
+    { enableHighAccuracy: true, maximumAge: 5000 });
+};
+
+function majPosition(pos) {
+  const moi = [pos.coords.latitude, pos.coords.longitude];
+  if (!pointMoi) {
+    pointMoi = L.circleMarker(moi, { radius: 9, color: "#fff", weight: 3, fillColor: "#1e6fff", fillOpacity: 1 }).addTo(carte);
+    carte.setView(moi, 16);
+  } else {
+    pointMoi.setLatLng(moi);
+  }
+  ordre.forEach(idx => { const e = etapes()[idx]; if (!vues.has(idx) && distance(moi, [e[1], e[2]]) < RAYON_VISITE) marquerVue(idx); });
+
+  const idx = ordre.find(i => !vues.has(i));
+  const zone = document.getElementById("prochaine");
+  if (idx === undefined) { zone.innerHTML = etapes().length ? "🎉 Balade terminée, bravo !" : ""; return; }
+  const e = etapes()[idx];
+  const d = distance(moi, [e[1], e[2]]);
+  zone.innerHTML = `Prochaine étape : <b>${e[0]}</b><br>à ${km(d)} à vol d'oiseau (≈ ${duree(d * 1.3)})`;
+}
+
+afficherBalade();
+</script>
+</body>
+</html>
