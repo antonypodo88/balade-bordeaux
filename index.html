@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-  <link rel="apple-touch-icon" href="balade-bordeaux.png">
+<link rel="apple-touch-icon" href="balade-bordeaux.png">
 <link rel="icon" href="balade-bordeaux.png">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,14 +12,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   body { font-family: system-ui; background: #f5f1ea; color: #2b2320; margin: 0; }
-  header { background: #7a1f3d; color: #fff; padding: 14px 16px 10px; }
+  header { background: #7a1f3d; color: #fff; padding: 14px 16px 12px; }
   header h1 { margin: 0 0 10px; font-size: 1.3em; }
   .choix { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
   .choix button { flex: 0 0 auto; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35);
                   border-radius: 20px; padding: 8px 14px; font-size: 0.95em; }
+  .choix button small { opacity: .8; }
   .choix button.actif { background: #fff; color: #7a1f3d; font-weight: 700; }
+  .depart { margin-top: 12px; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px; }
+  .depart .titre { font-size: 0.85em; opacity: .9; margin-bottom: 6px; }
+  .depart input[type=text] { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 10px; border: none; font-size: 1em; }
+  #suggestions div { background: #fff; color: #2b2320; padding: 9px 10px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 0.95em; }
+  .raccourcis { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .raccourcis button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35);
+                       border-radius: 16px; padding: 6px 10px; font-size: 0.85em; }
+  .depart label { display: block; margin-top: 8px; font-size: 0.9em; }
+  #departInfo { margin-top: 6px; font-size: 0.9em; font-weight: 600; }
   .resume { font-size: 0.95em; margin-top: 10px; opacity: 0.95; }
-  #carte { height: 52vh; }
+  #carte { height: 50vh; }
   .suivi { padding: 12px 16px; background: #fff; border-bottom: 1px solid #e5ddd0; display: flex; flex-wrap: wrap; gap: 8px; }
   .suivi button { flex: 1; background: #7a1f3d; color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 1em; }
   .suivi button.actif { background: #2e7d32; }
@@ -30,6 +40,7 @@
   .num { flex: 0 0 34px; height: 34px; border-radius: 50%; background: #7a1f3d; color: #fff;
          display: flex; align-items: center; justify-content: center; font-weight: 700; }
   .etape.vue .num { background: #2e7d32; }
+  .etape.depart-ligne .num { background: #1e6fff; }
   .etape h3 { margin: 0 0 4px; font-size: 1.05em; }
   .etape p { margin: 0; font-size: 0.9em; color: #5a4d46; }
   .etape .dist { font-size: 0.8em; color: #7a1f3d; margin-top: 4px; font-weight: 600; }
@@ -37,6 +48,7 @@
               display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
               box-shadow: 0 2px 5px rgba(0,0,0,.35); }
   .marqueur.vue { background: #2e7d32; }
+  .marqueur.depart { background: #1e6fff; }
   .credits { font-size: 0.75em; color: #8a7d74; padding: 0 16px 20px; }
 </style>
 </head>
@@ -45,6 +57,20 @@
 <header>
   <h1>Balades à Bordeaux</h1>
   <div class="choix" id="choix"></div>
+
+  <div class="depart">
+    <div class="titre">Point de départ</div>
+    <input type="text" id="recherche" placeholder="🔍 Rechercher une adresse ou un lieu…" autocomplete="off">
+    <div id="suggestions"></div>
+    <div class="raccourcis">
+      <button onclick="departPosition()">📍 Ma position</button>
+      <button onclick="definirDepart('Barrière Saint-Genès', 44.8251, -0.5818)">Barrière Saint-Genès</button>
+      <button onclick="definirDepart(null)">1ʳᵉ étape</button>
+    </div>
+    <label><input type="checkbox" id="boucle"> Revenir au point de départ</label>
+    <div id="departInfo"></div>
+  </div>
+
   <div class="resume" id="resume">Calcul du parcours…</div>
 </header>
 
@@ -57,7 +83,7 @@
 </div>
 
 <div class="etapes" id="etapes"></div>
-<div class="credits">Carte © IGN · Itinéraire piéton © OpenStreetMap / FOSSGIS · Coordonnées approximatives</div>
+<div class="credits">Carte © IGN · Adresses : Géoplateforme IGN · Itinéraire piéton © OpenStreetMap / FOSSGIS · Coordonnées des étapes approximatives</div>
 
 <script>
 // ===== LES BALADES : pour chaque étape [nom, latitude, longitude, description] =====
@@ -89,7 +115,7 @@ const BALADES = [
     ["Église Saint-Louis des Chartrons", 44.8547, -0.5741, "Église néogothique du XIXᵉ siècle, repère du quartier des Chartrons."],
     ["Quai des Chartrons", 44.8540, -0.5675, "Promenade le long de la Garonne, bordée d'anciennes demeures de négociants."],
     ["Bassins à flot", 44.8655, -0.5590, "Anciens bassins portuaires du XIXᵉ siècle, aujourd'hui quartier en pleine renaissance."],
-    ["Cité du Vin", 44.8625, -0.5503, "Musée consacré aux cultures du vin, ouvert en 2016, à l'architecture spectaculaire en forme de carafe."],
+    ["Cité du Vin", 44.8625, -0.5503, "Musée consacré aux cultures du vin, ouvert en 2016, à l'architecture en forme de carafe."],
   ]},
   { nom: "La rive droite", etapes: [
     ["Place de la Bourse", 44.8414, -0.5698, "Départ face au Miroir d'eau, avant de traverser la Garonne."],
@@ -115,18 +141,26 @@ function distance(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// ===================== ÉTAT =====================
-let choix = 0;
-try { choix = Number(localStorage.getItem("baladeChoix")) || 0; } catch (e) {}
+// ===================== ÉTAT (gardé uniquement sur le téléphone) =====================
+const lire = (cle, defaut) => { try { return JSON.parse(localStorage.getItem(cle)) ?? defaut; } catch (e) { return defaut; } };
+const ecrire = (cle, val) => { try { localStorage.setItem(cle, JSON.stringify(val)); } catch (e) {} };
+
+let choix = lire("baladeChoix", 0);
 if (choix >= BALADES.length) choix = 0;
-let vues = new Set(), distancesEtapes = [], marqueurs = [];
+let depart = lire("baladeDepart", null);          // { nom, lat, lon } ou null
+let boucle = lire("baladeBoucle", false);
+document.getElementById("boucle").checked = boucle;
+
+let vues = new Set(), ordre = [], distancesEtapes = [], marqueurs = {};
 const etapes = () => BALADES[choix].etapes;
 
-function chargerVues() {
-  try { vues = new Set(JSON.parse(localStorage.getItem("baladeVues_" + choix) || "[]")); } catch (e) { vues = new Set(); }
-}
-function sauverVues() {
-  try { localStorage.setItem("baladeVues_" + choix, JSON.stringify([...vues])); } catch (e) {}
+// Ordre de visite : on commence par l'étape la plus proche du départ, puis on suit la liste
+function calculerOrdre() {
+  const n = etapes().length;
+  if (!depart) return [...Array(n).keys()];
+  let plusProche = 0, dMin = Infinity;
+  etapes().forEach((e, i) => { const d = distance([depart.lat, depart.lon], [e[1], e[2]]); if (d < dMin) { dMin = d; plusProche = i; } });
+  return [...Array(n).keys()].map(k => (plusProche + k) % n);
 }
 
 // ===================== CARTE =====================
@@ -137,31 +171,93 @@ L.tileLayer("https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0
 const calqueParcours = L.layerGroup().addTo(carte);
 const calqueEtapes = L.layerGroup().addTo(carte);
 
-const icone = (i, vue) => L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14],
-  html: `<div class="marqueur ${vue ? "vue" : ""}">${i + 1}</div>` });
+const icone = (texte, classe) => L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+  html: `<div class="marqueur ${classe}">${texte}</div>` });
 
 // ===================== CHOIX DE LA BALADE =====================
 function afficherChoix() {
-  document.getElementById("choix").innerHTML = BALADES.map((b, i) =>
-    `<button class="${i === choix ? "actif" : ""}" onclick="choisir(${i})">${b.nom}</button>`).join("");
+  document.getElementById("choix").innerHTML = BALADES.map((b, i) => {
+    let loin = "";
+    if (depart) {
+      const d = Math.min(...b.etapes.map(e => distance([depart.lat, depart.lon], [e[1], e[2]])));
+      loin = ` <small>· à ${km(d * 1.3)}</small>`;
+    }
+    return `<button class="${i === choix ? "actif" : ""}" onclick="choisir(${i})">${b.nom}${loin}</button>`;
+  }).join("");
 }
 
-function choisir(i) {
-  choix = i;
-  try { localStorage.setItem("baladeChoix", i); } catch (e) {}
+function choisir(i) { choix = i; ecrire("baladeChoix", i); afficherBalade(); }
+
+// ===================== POINT DE DÉPART =====================
+function definirDepart(nom, lat, lon) {
+  depart = nom ? { nom, lat, lon } : null;
+  ecrire("baladeDepart", depart);
+  document.getElementById("recherche").value = "";
+  document.getElementById("suggestions").innerHTML = "";
   afficherBalade();
 }
 
+function departPosition() {
+  if (!navigator.geolocation) { alert("La localisation n'est pas disponible sur cet appareil."); return; }
+  document.getElementById("departInfo").textContent = "Recherche de votre position…";
+  navigator.geolocation.getCurrentPosition(
+    p => definirDepart("Ma position", p.coords.latitude, p.coords.longitude),
+    err => { document.getElementById("departInfo").textContent = "Position introuvable : " + err.message; },
+    { enableHighAccuracy: true, timeout: 15000 });
+}
+
+document.getElementById("boucle").onchange = e => { boucle = e.target.checked; ecrire("baladeBoucle", boucle); afficherBalade(); };
+
+// Barre de recherche d'adresse (service d'adresses de l'IGN)
+let attente = null;
+document.getElementById("recherche").oninput = e => {
+  clearTimeout(attente);
+  const q = e.target.value.trim();
+  if (q.length < 3) { document.getElementById("suggestions").innerHTML = ""; return; }
+  attente = setTimeout(() => chercherAdresse(q), 350);
+};
+
+async function chercherAdresse(q) {
+  const zone = document.getElementById("suggestions");
+  try {
+    const url = "https://data.geopf.fr/geocodage/search?limit=5&lat=44.84&lon=-0.58&q=" + encodeURIComponent(q);
+    const data = await (await fetch(url)).json();
+    const resultats = data.features || [];
+    if (!resultats.length) { zone.innerHTML = "<div>Aucun résultat</div>"; return; }
+    window._resultats = resultats;
+    zone.innerHTML = resultats.map((f, i) => `<div onclick="choisirAdresse(${i})">${f.properties.label}</div>`).join("");
+  } catch (err) {
+    zone.innerHTML = "<div>Recherche indisponible : " + err.message + "</div>";
+  }
+}
+
+function choisirAdresse(i) {
+  const f = window._resultats[i];
+  const [lon, lat] = f.geometry.coordinates;
+  definirDepart(f.properties.label, lat, lon);
+}
+
+// ===================== AFFICHAGE DE LA BALADE =====================
 function afficherBalade() {
   afficherChoix();
-  chargerVues();
+  vues = new Set(lire("baladeVues_" + choix, []));
+  ordre = calculerOrdre();
+  document.getElementById("departInfo").textContent = depart ? "Départ : " + depart.nom : "Départ : 1ʳᵉ étape de la balade";
+
   calqueEtapes.clearLayers();
   calqueParcours.clearLayers();
-  marqueurs = etapes().map(([nom, lat, lon, desc], i) =>
-    L.marker([lat, lon], { icon: icone(i, vues.has(i)) })
-      .bindPopup(`<b>${i + 1}. ${nom}</b><br>${desc}`)
-      .addTo(calqueEtapes));
-  carte.fitBounds(etapes().map(e => [e[1], e[2]]), { padding: [30, 30] });
+  marqueurs = {};
+  ordre.forEach((idx, pos) => {
+    const [nom, lat, lon, desc] = etapes()[idx];
+    marqueurs[idx] = L.marker([lat, lon], { icon: icone(pos + 1, vues.has(idx) ? "vue" : "") })
+      .bindPopup(`<b>${pos + 1}. ${nom}</b><br>${desc}`).addTo(calqueEtapes);
+  });
+  const points = ordre.map(i => [etapes()[i][1], etapes()[i][2]]);
+  if (depart) {
+    L.marker([depart.lat, depart.lon], { icon: icone("D", "depart") }).bindPopup("Départ").addTo(calqueEtapes);
+    points.unshift([depart.lat, depart.lon]);
+  }
+  carte.fitBounds(points, { padding: [30, 30] });
   document.getElementById("resume").textContent = "Calcul du parcours…";
   document.getElementById("prochaine").textContent = "";
   tracerParcours(choix);
@@ -169,61 +265,74 @@ function afficherBalade() {
 
 // ===================== ITINÉRAIRE À PIED =====================
 async function tracerParcours(numero) {
-  const pts = etapes().map(e => [e[1], e[2]]);
+  const pts = ordre.map(i => [etapes()[i][1], etapes()[i][2]]);
+  if (depart) pts.unshift([depart.lat, depart.lon]);
+  if (depart && boucle) pts.push([depart.lat, depart.lon]);
   try {
     const url = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/"
-              + etapes().map(e => e[2] + "," + e[1]).join(";") + "?overview=full&geometries=geojson";
+              + pts.map(p => p[1] + "," + p[0]).join(";") + "?overview=full&geometries=geojson";
     const data = await (await fetch(url)).json();
-    if (numero !== choix) return;                     // l'utilisateur a changé de balade entre-temps
+    if (numero !== choix) return;
     const route = data.routes[0];
     L.geoJSON(route.geometry, { style: { color: "#7a1f3d", weight: 5, opacity: 0.75 } }).addTo(calqueParcours);
-    distancesEtapes = [0, ...route.legs.map(l => l.distance)];
+    distancesEtapes = route.legs.map(l => l.distance);
     document.getElementById("resume").textContent =
-      `${pts.length} étapes · ${km(route.distance)} à pied · environ ${duree(route.distance)} de marche`;
+      `${ordre.length} étapes · ${km(route.distance)} à pied · environ ${duree(route.distance)} de marche`;
   } catch (e) {
     if (numero !== choix) return;
     L.polyline(pts, { color: "#7a1f3d", weight: 4, dashArray: "6 8" }).addTo(calqueParcours);
-    distancesEtapes = [0, ...pts.slice(1).map((p, i) => distance(pts[i], p) * 1.3)];
+    distancesEtapes = pts.slice(1).map((p, i) => distance(pts[i], p) * 1.3);
     const total = distancesEtapes.reduce((a, b) => a + b, 0);
     document.getElementById("resume").textContent =
-      `${pts.length} étapes · environ ${km(total)} · ${duree(total)} de marche (estimation)`;
+      `${ordre.length} étapes · environ ${km(total)} · ${duree(total)} de marche (estimation)`;
   }
   afficherListe();
 }
 
 function afficherListe() {
-  let cumul = 0;
-  document.getElementById("etapes").innerHTML = etapes().map(([nom, , , desc], i) => {
-    cumul += distancesEtapes[i] || 0;
-    const info = i === 0 ? "Départ" : `+ ${km(distancesEtapes[i] || 0)} · total ${km(cumul)}`;
-    return `<div class="etape ${vues.has(i) ? "vue" : ""}" onclick="allerA(${i})">
-      <div class="num">${vues.has(i) ? "✓" : i + 1}</div>
+  // distancesEtapes : tronçons dans l'ordre (départ → 1re étape, 1re → 2e, …, dernière → départ si boucle)
+  let cumul = 0, lignes = [];
+  const decal = depart ? 1 : 0;
+  if (depart) lignes.push(`<div class="etape depart-ligne"><div class="num">D</div><div><h3>Départ : ${depart.nom}</h3></div></div>`);
+  ordre.forEach((idx, pos) => {
+    const [nom, , , desc] = etapes()[idx];
+    const troncon = pos === 0 && !depart ? 0 : (distancesEtapes[pos - 1 + decal] || 0);
+    cumul += troncon;
+    const info = troncon === 0 ? "Départ" : `+ ${km(troncon)} · total ${km(cumul)}`;
+    lignes.push(`<div class="etape ${vues.has(idx) ? "vue" : ""}" onclick="allerA(${idx})">
+      <div class="num">${vues.has(idx) ? "✓" : pos + 1}</div>
       <div><h3>${nom}</h3><p>${desc}</p><div class="dist">${info}</div></div>
-    </div>`;
-  }).join("");
+    </div>`);
+  });
+  if (depart && boucle) {
+    const retour = distancesEtapes[ordre.length] || 0;
+    cumul += retour;
+    lignes.push(`<div class="etape depart-ligne"><div class="num">D</div><div><h3>Retour au départ</h3>
+      <div class="dist">+ ${km(retour)} · total ${km(cumul)}</div></div></div>`);
+  }
+  document.getElementById("etapes").innerHTML = lignes.join("");
 }
 
-function allerA(i) {
-  carte.setView([etapes()[i][1], etapes()[i][2]], 17);
-  marqueurs[i].openPopup();
+function allerA(idx) {
+  carte.setView([etapes()[idx][1], etapes()[idx][2]], 17);
+  marqueurs[idx].openPopup();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function marquerVue(i) {
-  vues.add(i);
-  sauverVues();
-  marqueurs[i].setIcon(icone(i, true));
+function marquerVue(idx) {
+  vues.add(idx);
+  ecrire("baladeVues_" + choix, [...vues]);
+  marqueurs[idx].setIcon(icone(ordre.indexOf(idx) + 1, "vue"));
   afficherListe();
 }
 
 document.getElementById("btnReset").onclick = () => {
   if (!confirm("Remettre à zéro les étapes de cette balade ?")) return;
-  vues = new Set();
-  sauverVues();
+  ecrire("baladeVues_" + choix, []);
   afficherBalade();
 };
 
-// ===================== SUIVI GPS =====================
+// ===================== SUIVI GPS PENDANT LA BALADE =====================
 let suiviId = null, pointMoi = null;
 
 document.getElementById("btnSuivi").onclick = () => {
@@ -251,13 +360,14 @@ function majPosition(pos) {
   } else {
     pointMoi.setLatLng(moi);
   }
-  etapes().forEach((e, i) => { if (!vues.has(i) && distance(moi, [e[1], e[2]]) < RAYON_VISITE) marquerVue(i); });
+  ordre.forEach(idx => { const e = etapes()[idx]; if (!vues.has(idx) && distance(moi, [e[1], e[2]]) < RAYON_VISITE) marquerVue(idx); });
 
-  const i = etapes().findIndex((e, k) => !vues.has(k));
+  const idx = ordre.find(i => !vues.has(i));
   const zone = document.getElementById("prochaine");
-  if (i === -1) { zone.innerHTML = "🎉 Balade terminée, bravo !"; return; }
-  const d = distance(moi, [etapes()[i][1], etapes()[i][2]]);
-  zone.innerHTML = `Prochaine étape : <b>${i + 1}. ${etapes()[i][0]}</b><br>à ${km(d)} à vol d'oiseau (≈ ${duree(d * 1.3)})`;
+  if (idx === undefined) { zone.innerHTML = "🎉 Balade terminée, bravo !"; return; }
+  const e = etapes()[idx];
+  const d = distance(moi, [e[1], e[2]]);
+  zone.innerHTML = `Prochaine étape : <b>${ordre.indexOf(idx) + 1}. ${e[0]}</b><br>à ${km(d)} à vol d'oiseau (≈ ${duree(d * 1.3)})`;
 }
 
 afficherBalade();
